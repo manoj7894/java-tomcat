@@ -2,8 +2,6 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE = "manoj3003/database:${BUILD_NUMBER}"
-        OLD_IMAGE_TAG_PATTERN = "manoj3003/database:*"  // Pattern to match old images
         SCANNER_HOME = tool 'sonar-scanner'
         WORKSPACE_BASE = "/var/lib/jenkins/workspace" // Set this to the base path of your Jenkins workspaces
     }
@@ -47,77 +45,6 @@ pipeline {
                 }
             }
         } */
-
-        stage('Check Old Docker Images') {
-            steps {
-                script {
-                    echo "Checking for old Docker images..."
-                    
-                    def oldImages = sh(script: "docker images --format '{{.Repository}}:{{.Tag}}' | grep '^manoj3003/database:' || true", returnStdout: true).trim()
-                    echo "Old images found: ${oldImages}"
-                    
-                    if (oldImages) {
-                        env.OLD_IMAGES_EXIST = 'true'
-                    } else {
-                        echo "No old images found."
-                        env.OLD_IMAGES_EXIST = 'false'
-                    }
-                }
-            }
-        }
-
-        stage('Cleanup Old Docker Images') {
-            when {
-                expression { env.OLD_IMAGES_EXIST == 'true' }
-            }
-            steps {
-                script {
-                    echo "Cleaning up old Docker images..."
-                    
-                    def oldImages = sh(script: "docker images --format '{{.Repository}}:{{.Tag}}' | grep '^manoj3003/database:' || true", returnStdout: true).trim()
-                    echo "Old images found for cleanup: ${oldImages}"
-                    
-                    if (oldImages) {
-                        def imagesToRemove = oldImages.split('\n').findAll { image ->
-                            image != DOCKER_IMAGE
-                        }
-                        
-                        if (imagesToRemove) {
-                            imagesToRemove.each { image ->
-                                echo "Attempting to remove old image ${image}"
-                                try {
-                                    sh """
-                                        if docker images -q ${image} > /dev/null 2>&1; then
-                                            docker rmi -f ${image} || echo 'Failed to remove image ${image} - might be in use or other error.'
-                                        else
-                                            echo 'Image ${image} does not exist.'
-                                        fi
-                                    """
-                                } catch (Exception e) {
-                                    echo "Error while attempting to remove image ${image}: ${e.getMessage()}"
-                                }
-                            }
-                        } else {
-                            echo "No old images to remove."
-                        }
-                    } else {
-                        echo "No old images found matching pattern 'manoj3003/database:'"
-                    }
-                }
-            }
-        }
-        
-        stage('Cleanup Old Trivy Reports') {
-            steps {
-                script {
-                    echo "Cleaning up old Trivy reports..."
-                    sh '''
-                        rm -f trivy.txt
-                        rm -f fs-report.html
-                    '''
-                }
-            }
-        }
         
         stage('Get Code') {
             steps {
@@ -153,23 +80,23 @@ pipeline {
                     sh ''' $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=Petclinic \
                     -Dsonar.java.binaries=. \
                     -Dsonar.projectKey=Sample \
-                    -Dsonar.host.url=http://13.232.72.13:9000'''
+                    -Dsonar.host.url=http://13.233.77.222:9000'''
     
                 }
             }
         }
         
-        // stage('OWASP Scan') {
-        //     when {
-        //         expression {
-        //             fileExists('pom.xml')
-        //         }
-        //     }
-        //     steps {
-        //         dependencyCheck additionalArguments: '', odcInstallation: 'DP-Check'
-        //         dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
-        //     }
-        // }
+        stage('OWASP Scan') {
+            when {
+                expression {
+                    fileExists('pom.xml')
+                }
+            }
+            steps {
+                dependencyCheck additionalArguments: '', odcInstallation: 'DP-Check'
+                dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+            }
+        }
         
         // stage("OWASP Dependency Check"){
         //     steps{
@@ -194,7 +121,7 @@ pipeline {
         
         stage('Deploy to tomcat server') {
             steps{                                 
-                deploy adapters: [tomcat9(credentialsId: 'tomcat_id', path: '', url: 'http://13.232.72.13:9090/')], contextPath: 'sample-java', war: '**/*.war'
+                deploy adapters: [tomcat9(credentialsId: 'tomcat_id', path: '', url: 'http://13.233.77.222:9090/')], contextPath: 'sample-java', war: '**/*.war'
             }
         }
     }
